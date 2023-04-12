@@ -37,7 +37,8 @@
 #include "Developer/AssetTools/Public/IAssetTools.h"
 #include "Developer/AssetTools/Public/AssetToolsModule.h"
 
-#include "Toolkits/AssetEditorManager.h"
+#include "Toolkits/ToolkitManager.h"
+
 #include "Dialogs/DlgPickAssetPath.h"
 #include "AssetRegistryModule.h"
 
@@ -110,36 +111,18 @@ static void MapSkinVerts(
 	UVertexAnimProfile* InProfile, const TArray <FFinalSkinVertex>& SkinVerts,
 	TArray <int32>& UniqueVertsSourceID, TArray <FVector2D>& OutUVSet_Vert)
 {
-	TArray <FVector> UniqueVerts;
+	TArray <FVector3f> UniqueVerts;
 	TArray <int32> UniqueID;
-	UniqueID.SetNumZeroed(SkinVerts.Num());
 
 	for (int32 i = 0; i < SkinVerts.Num(); i++)
 	{
-		int32 ID = INDEX_NONE;
-
-		if (InProfile->UVMergeDuplicateVerts)
+		if (UniqueVerts.Find(SkinVerts[i].Position) == INDEX_NONE)
 		{
-			if (UniqueVerts.Find(SkinVerts[i].Position, ID))
-			{
-				UniqueID[i] = ID;
-			}
-			else
-			{
-				UniqueID[i] = UniqueVerts.Num();
-				UniqueVerts.Add(SkinVerts[i].Position);
-				UniqueVertsSourceID.Add(i);
-			}
-		}
-		else
-		{
-			UniqueID[i] = UniqueVerts.Num();
+			UniqueID.Add(UniqueVerts.Num());
 			UniqueVerts.Add(SkinVerts[i].Position);
 			UniqueVertsSourceID.Add(i);
 		}
 	}
-
-
 
 	if (InProfile->AutoSize)
 	{
@@ -171,8 +154,8 @@ static void MapSkinVerts(
 	}
 
 	TArray <FVector2D> NewUVSet_Vert;
-	NewUVSet_Vert.SetNum(SkinVerts.Num());
-	for (int32 i = 0; i < SkinVerts.Num(); i++)
+	NewUVSet_Vert.SetNum(UniqueVerts.Num());
+	for (int32 i = 0; i < UniqueVerts.Num(); i++)
 	{
 		NewUVSet_Vert[i] = UniqueMappedUVs[UniqueID[i]];
 	}
@@ -234,8 +217,8 @@ static void SkinnedMeshVATData(
 
 	const int32 NumLODs = InSkinnedMeshComponent->GetNumLODs();
 
-	const auto& RefSkeleton = InSkinnedMeshComponent->SkeletalMesh->RefSkeleton;
-	const auto& GlobalRefSkeleton = InSkinnedMeshComponent->SkeletalMesh->Skeleton->GetReferenceSkeleton();
+	const auto& RefSkeleton = InSkinnedMeshComponent->SkeletalMesh->GetRefSkeleton();
+	const auto& GlobalRefSkeleton = InSkinnedMeshComponent->SkeletalMesh->GetSkeleton()->GetReferenceSkeleton();
 
 	TArray <FVector2D> GridUVs_Vert;
 	TArray <FVector2D> GridUVs_Bone;
@@ -296,15 +279,15 @@ static void SkinnedMeshVATData(
 
 			for (int32 o = 0; o < FinalVertices.Num(); o++)
 			{
-				const FVector Pos = FinalVertices[o].Position;
+				const FVector3f Pos = FinalVertices[o].Position;
 				float Lowest = MAX_FLT;
 				int32 WinnerID = INDEX_NONE;
 
 				for (int32 u = 0; u < UniqueSourceID.Num(); u++)
 				{
-					const FVector TargetPos = AnimMeshFinalVertices[UniqueSourceID[u]].Position;
+					const FVector3f TargetPos = AnimMeshFinalVertices[UniqueSourceID[u]].Position;
 
-					const float Dist = FVector::Dist(Pos, TargetPos);
+					const float Dist = FVector3f::Dist(Pos, TargetPos);
 					if (Dist < Lowest)
 					{
 						Lowest = Dist;
@@ -499,7 +482,7 @@ void GatherAndBakeAllAnimVertData(
 	FSkeletalMeshRenderData& SkeletalMeshRenderData = PreviewComponent->MeshObject->GetSkeletalMeshRenderData();
 	FSkeletalMeshLODRenderData& LODData = SkeletalMeshRenderData.LODRenderData[0];
 	const auto& ActiveBoneIndices = LODData.ActiveBoneIndices;
-	TArray <FMatrix> RefToLocal;
+	TArray <FMatrix44f> RefToLocal;
 
 	// 3º Store Values
 	// Vert Anim
@@ -539,12 +522,13 @@ void GatherAndBakeAllAnimVertData(
 					{
 						const int32 IndexInZeroed = k;
 						const int32 VertID = UniqueSourceIDs[k];
-						const FVector Delta = FinalVerts[VertID].Position - RefPoseFinalVerts[VertID].Position;
+						const FVector3f Delta = FinalVerts[VertID].Position - RefPoseFinalVerts[VertID].Position;
 						MaxValueOffset = FMath::Max(Delta.GetAbsMax(), MaxValueOffset);
-						ZeroedPos[IndexInZeroed] = Delta;
+						ZeroedPos[IndexInZeroed] = FVector4(Delta);
 
-						const FVector DeltaNormal = FinalVerts[VertID].TangentZ.ToFVector() - RefPoseFinalVerts[VertID].TangentZ.ToFVector();
-						ZeroedNorm[IndexInZeroed] = DeltaNormal;
+						const FVector3f DeltaNormal = FinalVerts[VertID].TangentZ.ToFVector3f() - RefPoseFinalVerts[VertID].TangentZ.ToFVector3f();
+						ZeroedNorm[IndexInZeroed] = FVector4(DeltaNormal);
+						
 					}
 
 					GridVertPos.Append(ZeroedPos);
@@ -558,8 +542,8 @@ void GatherAndBakeAllAnimVertData(
 	// Bone Anim
 	if (Profile->Anims_Bone.Num())
 	{
-		const auto& RefSkeleton = PreviewComponent->SkeletalMesh->RefSkeleton;
-		const auto& GlobalRefSkeleton = PreviewComponent->SkeletalMesh->Skeleton->GetReferenceSkeleton();
+		const auto& RefSkeleton = PreviewComponent->SkeletalMesh->GetRefSkeleton();
+		const auto& GlobalRefSkeleton = PreviewComponent->SkeletalMesh->GetSkeleton()->GetReferenceSkeleton();
 		// Ref Pose in Row 0
 		{
 			PreviewComponent->EnablePreview(true, NULL);
@@ -610,12 +594,12 @@ void GatherAndBakeAllAnimVertData(
 					{
 						const int32 GlobalID = GlobalRefSkeleton.FindBoneIndex(RefSkeleton.GetBoneName(k));
 
-						FVector Pos = RefToLocal[k].GetOrigin();
-						ZeroedBonePos[GlobalID] = Pos;
+						FVector3f Pos = RefToLocal[k].GetOrigin();
+						ZeroedBonePos[GlobalID] = FVector4(Pos);
 
 						MaxValuePosBone = FMath::Max(MaxValuePosBone, Pos.GetAbsMax());
 
-						FQuat Q = RefToLocal[k].ToQuat();
+						FQuat Q = FQuat(RefToLocal[k].ToQuat());
 						QuatSave(Q);
 						ZeroedBoneRot[GlobalID] = FVector4(Q.X, Q.Y, Q.Z, Q.W);
 					}
@@ -798,7 +782,7 @@ static UTexture2D* SetTexture2(
 		}
 		else
 		{
-			UPackage* Package = CreatePackage(NULL, *(PackagePath + Name));
+			UPackage* Package = CreatePackage(*(PackagePath + Name));
 			check(Package);
 			Package->FullyLoad();
 
@@ -862,54 +846,10 @@ int FVATEditorUtils::UnPackBits(const float N)
 	return float(result);
 }
 
-void FVATEditorUtils::DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent)
+void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* PreviewComponent, UVertexAnimProfile* Profile,
+                                                 FString PackageName, bool bOnlyCreateStaticMesh, bool DoAnimBake,
+                                                 bool DoStaticMesh)
 {
-	PreviewComponent->GlobalAnimRateScale = 0.f;
-	
-	UVertexAnimProfile* Profile = NULL;
-
-	FString MeshName;
-	FString PackageName;
-	bool bOnlyCreateStaticMesh = false;
-
-	{
-		FString NewNameSuggestion = FString(TEXT("VertexAnimStaticMesh"));
-		FString PackageNameSuggestion = FString(TEXT("/Game/Meshes/")) + NewNameSuggestion;
-		FString Name;
-		FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
-		AssetToolsModule.Get().CreateUniqueAssetName(PackageNameSuggestion, TEXT(""), PackageNameSuggestion, Name);
-
-		//TSharedPtr<SDlgPickAssetPath> PickAssetPathWidget =
-		TSharedPtr<SPickAssetDialog> PickAssetPathWidget =
-			SNew(SPickAssetDialog)
-			.Title(LOCTEXT("BakeAnimDialog", "Bake Anim Dialog"))
-			.DefaultAssetPath(FText::FromString(PackageNameSuggestion));
-
-		if (PickAssetPathWidget->ShowModal() == EAppReturnType::Ok)
-		{
-			// Get the full name of where we want to create the mesh asset.
-			Profile = PickAssetPathWidget->GetSelectedProfile();
-			bOnlyCreateStaticMesh = PickAssetPathWidget->GetOnlyCreateStaticMesh();
-
-			PackageName = PickAssetPathWidget->GetFullAssetPath().ToString();
-			MeshName = FPackageName::GetLongPackageAssetName(PackageName);
-
-			// Check if the user inputed a valid asset name, if they did not, give it the generated default name
-			if (MeshName.IsEmpty())
-			{
-				// Use the defaults that were already generated.
-				PackageName = PackageNameSuggestion;
-				MeshName = *Name;
-			}
-		}
-	}
-
-
-	bool DoAnimBake = (Profile != NULL) && !bOnlyCreateStaticMesh;
-	bool DoStaticMesh = (Profile != NULL);
-
-	if ((!DoAnimBake) && (!DoStaticMesh)) return;
-
 	TArray <int32> UniqueSourceIDs;
 	TArray <TArray <FVector2D>> UVs_VertAnim;
 	TArray <TArray <FVector2D>> UVs_BoneAnim1;
@@ -939,7 +879,7 @@ void FVATEditorUtils::DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent)
 			(Profile->OverrideSize_Bone.GetMax() > 4096))
 		{
 			FMessageDialog::Open(EAppMsgType::Ok,
-				LOCTEXT("TooMuch", "Warning: required texture size exceeds UE texture resolution limit, Mesh has too many vertices and/or Profile has too many animation frames"));
+			                     LOCTEXT("TooMuch", "Warning: required texture size exceeds UE texture resolution limit, Mesh has too many vertices and/or Profile has too many animation frames"));
 			return;
 		}
 	}
@@ -1004,10 +944,10 @@ void FVATEditorUtils::DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent)
 				EncodeData_Vec(VertNormal, 2.f, false, Data); // decided on fixed 2.0 for simplicity
 
 				Profile->NormalsTexture = SetTexture2(PreviewComponent->GetWorld(), PackagePath,
-					Profile->GetName() + "_Normals", Profile->NormalsTexture,
-					TextureWidth_Vert, TextureHeight_Vert,
-					Data,
-					Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
+				                                      Profile->GetName() + "_Normals", Profile->NormalsTexture,
+				                                      TextureWidth_Vert, TextureHeight_Vert,
+				                                      Data,
+				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
 				Profile->NormalsTexture->Filter = TextureFilter::TF_Nearest;
 				Profile->NormalsTexture->NeverStream = true;
@@ -1024,10 +964,10 @@ void FVATEditorUtils::DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent)
 				EncodeData_Vec(VertPos, Profile->MaxValueOffset_Vert, true, Data);
 
 				Profile->OffsetsTexture = SetTexture2(PreviewComponent->GetWorld(), PackagePath,
-					Profile->GetName() + "_Offsets", Profile->OffsetsTexture,
-					TextureWidth_Vert, TextureHeight_Vert,
-					Data,
-					Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
+				                                      Profile->GetName() + "_Offsets", Profile->OffsetsTexture,
+				                                      TextureWidth_Vert, TextureHeight_Vert,
+				                                      Data,
+				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
 				Profile->OffsetsTexture->Filter = TextureFilter::TF_Nearest;
 				Profile->OffsetsTexture->NeverStream = true;
@@ -1052,10 +992,10 @@ void FVATEditorUtils::DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent)
 				EncodeData_Quat(true, BoneRot, Data);
 
 				Profile->BoneRotTexture = SetTexture2(PreviewComponent->GetWorld(), PackagePath, 
-					Profile->GetName() + "_BoneRot", Profile->BoneRotTexture,
-					TextureWidth_Bone, TextureHeight_Bone, 
-					Data,
-					Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
+				                                      Profile->GetName() + "_BoneRot", Profile->BoneRotTexture,
+				                                      TextureWidth_Bone, TextureHeight_Bone, 
+				                                      Data,
+				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
 				Profile->BoneRotTexture->Filter = TextureFilter::TF_Nearest;
 				Profile->BoneRotTexture->NeverStream = true;
@@ -1071,10 +1011,10 @@ void FVATEditorUtils::DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent)
 				EncodeData_Vec(BonePos, Profile->MaxValuePosition_Bone, true, Data);
 
 				Profile->BonePosTexture = SetTexture2(PreviewComponent->GetWorld(), PackagePath,
-					Profile->GetName() + "_BonePos", Profile->BonePosTexture,
-					TextureWidth_Bone, TextureHeight_Bone, 
-					Data,//BonePos,
-					Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
+				                                      Profile->GetName() + "_BonePos", Profile->BonePosTexture,
+				                                      TextureWidth_Bone, TextureHeight_Bone, 
+				                                      Data,//BonePos,
+				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
 				Profile->BonePosTexture->Filter = TextureFilter::TF_Nearest;
 				Profile->BonePosTexture->NeverStream = true;
@@ -1090,6 +1030,58 @@ void FVATEditorUtils::DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent)
 		}
 
 	}
+	return;
+}
+
+void FVATEditorUtils::DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent)
+{
+	PreviewComponent->GlobalAnimRateScale = 0.f;
+	
+	UVertexAnimProfile* Profile = NULL;
+
+	FString MeshName;
+	FString PackageName;
+	bool bOnlyCreateStaticMesh = false;
+
+	{
+		FString NewNameSuggestion = FString(TEXT("VertexAnimStaticMesh"));
+		FString PackageNameSuggestion = FString(TEXT("/Game/Meshes/")) + NewNameSuggestion;
+		FString Name;
+		FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
+		AssetToolsModule.Get().CreateUniqueAssetName(PackageNameSuggestion, TEXT(""), PackageNameSuggestion, Name);
+
+		//TSharedPtr<SDlgPickAssetPath> PickAssetPathWidget =
+		TSharedPtr<SPickAssetDialog> PickAssetPathWidget =
+			SNew(SPickAssetDialog)
+			.Title(LOCTEXT("BakeAnimDialog", "Bake Anim Dialog"))
+			.DefaultAssetPath(FText::FromString(PackageNameSuggestion));
+
+		if (PickAssetPathWidget->ShowModal() == EAppReturnType::Ok)
+		{
+			// Get the full name of where we want to create the mesh asset.
+			Profile = PickAssetPathWidget->GetSelectedProfile();
+			bOnlyCreateStaticMesh = PickAssetPathWidget->GetOnlyCreateStaticMesh();
+
+			PackageName = PickAssetPathWidget->GetFullAssetPath().ToString();
+			MeshName = FPackageName::GetLongPackageAssetName(PackageName);
+
+			// Check if the user inputed a valid asset name, if they did not, give it the generated default name
+			if (MeshName.IsEmpty())
+			{
+				// Use the defaults that were already generated.
+				PackageName = PackageNameSuggestion;
+				MeshName = *Name;
+			}
+		}
+	}
+
+
+	bool DoAnimBake = (Profile != NULL) && !bOnlyCreateStaticMesh;
+	bool DoStaticMesh = (Profile != NULL);
+
+	if ((!DoAnimBake) && (!DoStaticMesh)) return;
+
+	DoBakeProcess_Programmatic(PreviewComponent, Profile, PackageName, bOnlyCreateStaticMesh, DoAnimBake, DoStaticMesh);
 }
 
 void FVATEditorUtils::UVChannelsToSkeletalMesh(USkeletalMesh* Skel, const int32 LODIndex, const int32 UVChannelStart, TArray<TArray<FVector2D>>& UVChannels)
@@ -1109,7 +1101,7 @@ void FVATEditorUtils::UVChannelsToSkeletalMesh(USkeletalMesh* Skel, const int32 
 			int32 SoftIndex = 0;
 			Skel->GetImportedModel()->LODModels[LODIndex].GetSectionFromVertexIndex(i, SectionIndex, SoftIndex);
 
-			Skel->GetImportedModel()->LODModels[LODIndex].Sections[SectionIndex].SoftVertices[SoftIndex].UVs[UVChannelStart+j] = UVChannels[j][i];
+			Skel->GetImportedModel()->LODModels[LODIndex].Sections[SectionIndex].SoftVertices[SoftIndex].UVs[UVChannelStart+j] = FVector2f(UVChannels[j][i]);
 		}
 	}
 }

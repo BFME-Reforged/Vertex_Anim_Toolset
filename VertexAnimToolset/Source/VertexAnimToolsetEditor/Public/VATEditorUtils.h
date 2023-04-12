@@ -12,6 +12,7 @@
 #include "Components/MeshComponent.h"
 #include "Containers/SortedMap.h"
 
+class UVertexAnimProfile;
 class UDebugSkelMeshComponent;
 class UTextureRenderTarget2D;
 class UAnimSequence;
@@ -31,6 +32,9 @@ public:
     static int UnPackBits(const float bit);
 
     static void DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent);
+	static void DoBakeProcess_Programmatic(UDebugSkelMeshComponent* PreviewComponent,
+	                                       UVertexAnimProfile* Profile, FString PackageName,
+	                                       bool bOnlyCreateStaticMesh, bool DoAnimBake, bool DoStaticMesh);
     
     static void SkelPivotPos(USkeletalMesh* Skel, TArray <FVector>& VectorData);
     static void SkelOrigin(USkeletalMesh* Skel, TArray <FVector>& VectorData);
