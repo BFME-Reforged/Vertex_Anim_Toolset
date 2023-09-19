@@ -82,69 +82,24 @@
 
 #include "Developer/AssetTools/Public/IAssetTools.h"
 #include "Developer/AssetTools/Public/AssetToolsModule.h"
-
-#include "Toolkits/ToolkitManager.h"
 #include "Dialogs/DlgPickAssetPath.h"
-#include "AssetRegistryModule.h"
-
-#include "VertexAnimProfile.h"
-
-
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
-
-#include "Engine.h"
-
-#include "Misc/FeedbackContext.h"
 #include "Misc/MessageDialog.h"
-
-#include "IPersonaPreviewScene.h"
-#include "AssetViewerSettings.h"
 #include "RenderingThread.h"
-
-#include "Components/PoseableMeshComponent.h"
-
-#include "AnimationRuntime.h"
-
-//--------------------------------------
-#include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
-
-#include "VertexAnimUtils.h"
-
 #include "Animation/AnimSequence.h"
-
-#include "Kismet/KismetRenderingLibrary.h"
-
-#include "PackageTools.h"
-
 #include "Animation/AnimSequence.h"
-
-#include "Rendering/SkinWeightVertexBuffer.h"
-
-
 #include "Misc/App.h"
 #include "RenderingThread.h"
-#include "GameFramework/PlayerController.h"
-#include "ContentStreaming.h"
 #include "DrawDebugHelpers.h"
 #include "UnrealEngine.h"
-#include "SkeletalRenderPublic.h"
-
-#include "Animation/AnimStats.h"
-#include "Engine/SkeletalMeshSocket.h"
-#include "PhysicsEngine/PhysicsAsset.h"
 #include "EngineGlobals.h"
 #include "PrimitiveSceneProxy.h"
 #include "Engine/CollisionProfile.h"
-#include "Rendering/SkinWeightVertexBuffer.h"
-#include "SkeletalMeshTypes.h"
 #include "Animation/MorphTarget.h"
-#include "AnimationRuntime.h"
-
-#include "Animation/AnimSingleNodeInstance.h"
-
 
 #define LOCTEXT_NAMESPACE "PickAssetDialog"
 
