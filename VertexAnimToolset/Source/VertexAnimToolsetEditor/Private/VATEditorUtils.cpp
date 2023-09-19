@@ -216,9 +216,9 @@ static void SkinnedMeshVATData(
 	Colors_BoneAnim.Empty();
 
 	const int32 NumLODs = InSkinnedMeshComponent->GetNumLODs();
-
-	const auto& RefSkeleton = InSkinnedMeshComponent->SkeletalMesh->GetRefSkeleton();
-	const auto& GlobalRefSkeleton = InSkinnedMeshComponent->SkeletalMesh->GetSkeleton()->GetReferenceSkeleton();
+	const auto RefSkelMesh = InSkinnedMeshComponent->GetSkinnedAsset();
+	const auto& RefSkeleton = RefSkelMesh->GetRefSkeleton();
+	const auto& GlobalRefSkeleton = RefSkelMesh->GetSkeleton()->GetReferenceSkeleton();
 
 	TArray <FVector2D> GridUVs_Vert;
 	TArray <FVector2D> GridUVs_Bone;
@@ -253,7 +253,7 @@ static void SkinnedMeshVATData(
 	{
 		int32 LODIndexRead = FMath::Min(OverallLODIndex, NumLODs - 1);
 
-		FSkeletalMeshLODInfo& SrcLODInfo = *(InSkinnedMeshComponent->SkeletalMesh->GetLODInfo(LODIndexRead));
+		FSkeletalMeshLODInfo& SrcLODInfo = *(InSkinnedMeshComponent->GetSkinnedAsset()->GetLODInfo(LODIndexRead));
 
 		// Get the CPU skinned verts for this LOD, WAIT, if it changes LOD on each loop, does that not mean it changes??
 		TArray<FFinalSkinVertex> FinalVertices;
@@ -301,8 +301,8 @@ static void SkinnedMeshVATData(
 			}
 		}
 
-
-		FSkeletalMeshModel* Resource = InSkinnedMeshComponent->SkeletalMesh->GetImportedModel();
+		
+		FSkeletalMeshModel* Resource = RefSkelMesh->GetImportedModel();
 		FSkeletalMeshLODRenderData& LODData = SkeletalMeshRenderData.LODRenderData[LODIndexRead];
 
 		{
@@ -421,7 +421,7 @@ void GatherAndBakeAllAnimVertData(
 	{
 		const int32 InLODIndex = 0;
 		{
-			if (USkinnedMeshComponent* MasterPoseComponentPtr = PreviewComponent->MasterPoseComponent.Get())
+			if (USkinnedMeshComponent* MasterPoseComponentPtr = PreviewComponent->LeaderPoseComponent.Get())
 			{
 				MasterPoseComponentPtr->SetForcedLOD(InLODIndex + 1);
 				MasterPoseComponentPtr->UpdateLODStatus();
@@ -542,8 +542,9 @@ void GatherAndBakeAllAnimVertData(
 	// Bone Anim
 	if (Profile->Anims_Bone.Num())
 	{
-		const auto& RefSkeleton = PreviewComponent->SkeletalMesh->GetRefSkeleton();
-		const auto& GlobalRefSkeleton = PreviewComponent->SkeletalMesh->GetSkeleton()->GetReferenceSkeleton();
+		const auto SkinnedAsset = PreviewComponent->GetSkinnedAsset();
+		const auto& RefSkeleton = SkinnedAsset->GetRefSkeleton();
+		const auto& GlobalRefSkeleton = SkinnedAsset->GetSkeleton()->GetReferenceSkeleton();
 		// Ref Pose in Row 0
 		{
 			PreviewComponent->EnablePreview(true, NULL);
@@ -895,7 +896,7 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 		{
 			FString AssetName = Profile->GetOutermost()->GetName();
 			//FString Name = Profile->GetName();
-			FString Name = PreviewComponent->SkeletalMesh->GetName();
+			FString Name = PreviewComponent->GetSkinnedAsset()->GetName();
 			//FString AssetName = PreviewComponent->SkeletalMesh->GetOutermost()->GetName();
 			const FString SanitizedBasePackageName = UPackageTools::SanitizePackageName(AssetName);
 			const FString PackagePath = FPackageName::GetLongPackagePath(SanitizedBasePackageName) + TEXT("/") + Name + TEXT("_VAT");

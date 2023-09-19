@@ -5,7 +5,7 @@
 #include "IAnimationEditor.h"
 
 #include "VertexAnimProfile.h"
-
+#include "Engine/SkinnedAssetCommon.h"
 #include "Misc/MessageDialog.h"
 #include "Modules/ModuleManager.h"
 #include "Misc/PackageName.h"
