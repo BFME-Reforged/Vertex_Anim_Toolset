@@ -2,107 +2,45 @@
 
 
 #include "VATEditorUtils.h"
-
-#include "IPersonaToolkit.h"
 #include "Rendering/SkeletalMeshModel.h"
 #include "Rendering/SkeletalMeshRenderData.h"
-
 #include "Animation/DebugSkelMeshComponent.h"
-
-
 #include "Textures/SlateIcon.h"
 #include "Styling/SlateTypes.h"
 #include "Framework/Commands/UIAction.h"
 #include "Framework/Commands/UICommandList.h"
 #include "Framework/MultiBox/MultiBoxExtender.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-
 #include "Engine/StaticMesh.h"
 #include "Materials/Material.h"
-#include "Materials/MaterialInstanceDynamic.h"
-
-#include "RawMesh.h"
 #include "StaticMeshResources.h"
-#include "MeshBuild.h"
-
-#include "Rendering/SkeletalMeshModel.h"
-#include "Rendering/SkeletalMeshRenderData.h"
-
 #include "Engine/SkeletalMesh.h"
 #include "SkeletalRenderPublic.h"
 #include "Runtime/Engine/Private/SkeletalRenderCPUSkin.h"
-
 #include "Animation/MorphTarget.h"
-
 #include "Developer/AssetTools/Public/IAssetTools.h"
 #include "Developer/AssetTools/Public/AssetToolsModule.h"
-
-#include "Toolkits/ToolkitManager.h"
-
-#include "Dialogs/DlgPickAssetPath.h"
-#include "AssetRegistryModule.h"
-
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "VertexAnimProfile.h"
-
-
-#include "Framework/Notifications/NotificationManager.h"
-#include "Widgets/Notifications/SNotificationList.h"
-
-#include "Engine.h"
-
-#include "Misc/FeedbackContext.h"
 #include "Misc/MessageDialog.h"
-
-#include "IPersonaPreviewScene.h"
-#include "AssetViewerSettings.h"
 #include "RenderingThread.h"
-
-#include "Components/PoseableMeshComponent.h"
-
 #include "AnimationRuntime.h"
-
-//--------------------------------------
-#include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
-
 #include "VertexAnimUtils.h"
-
 #include "Animation/AnimSequence.h"
-
-#include "Kismet/KismetRenderingLibrary.h"
-
 #include "PackageTools.h"
-
 #include "Animation/AnimSequence.h"
-
 #include "Rendering/SkinWeightVertexBuffer.h"
-
-
 #include "Misc/App.h"
 #include "RenderingThread.h"
-#include "GameFramework/PlayerController.h"
-#include "ContentStreaming.h"
 #include "DrawDebugHelpers.h"
 #include "UnrealEngine.h"
-#include "SkeletalRenderPublic.h"
-//#include "SkeletalRenderCPUSkin.h"
-//#include "SkeletalRenderGPUSkin.h"
-//#include "SkeletalRenderStatic.h"
-#include "Animation/AnimStats.h"
-#include "Engine/SkeletalMeshSocket.h"
-#include "PhysicsEngine/PhysicsAsset.h"
 #include "EngineGlobals.h"
 #include "PrimitiveSceneProxy.h"
 #include "Engine/CollisionProfile.h"
-#include "Rendering/SkinWeightVertexBuffer.h"
-#include "SkeletalMeshTypes.h"
 #include "Animation/MorphTarget.h"
-#include "AnimationRuntime.h"
-
 #include "Animation/AnimSingleNodeInstance.h"
-
-#include "MeshDescription.h"
 
 #define LOCTEXT_NAMESPACE "VATEditorUtils"
 
@@ -216,9 +154,9 @@ static void SkinnedMeshVATData(
 	Colors_BoneAnim.Empty();
 
 	const int32 NumLODs = InSkinnedMeshComponent->GetNumLODs();
-
-	const auto& RefSkeleton = InSkinnedMeshComponent->SkeletalMesh->GetRefSkeleton();
-	const auto& GlobalRefSkeleton = InSkinnedMeshComponent->SkeletalMesh->GetSkeleton()->GetReferenceSkeleton();
+	const auto RefSkelMesh = InSkinnedMeshComponent->GetSkinnedAsset();
+	const auto& RefSkeleton = RefSkelMesh->GetRefSkeleton();
+	const auto& GlobalRefSkeleton = RefSkelMesh->GetSkeleton()->GetReferenceSkeleton();
 
 	TArray <FVector2D> GridUVs_Vert;
 	TArray <FVector2D> GridUVs_Bone;
@@ -253,7 +191,7 @@ static void SkinnedMeshVATData(
 	{
 		int32 LODIndexRead = FMath::Min(OverallLODIndex, NumLODs - 1);
 
-		FSkeletalMeshLODInfo& SrcLODInfo = *(InSkinnedMeshComponent->SkeletalMesh->GetLODInfo(LODIndexRead));
+		FSkeletalMeshLODInfo& SrcLODInfo = *(InSkinnedMeshComponent->GetSkinnedAsset()->GetLODInfo(LODIndexRead));
 
 		// Get the CPU skinned verts for this LOD, WAIT, if it changes LOD on each loop, does that not mean it changes??
 		TArray<FFinalSkinVertex> FinalVertices;
@@ -301,8 +239,8 @@ static void SkinnedMeshVATData(
 			}
 		}
 
-
-		FSkeletalMeshModel* Resource = InSkinnedMeshComponent->SkeletalMesh->GetImportedModel();
+		
+		FSkeletalMeshModel* Resource = RefSkelMesh->GetImportedModel();
 		FSkeletalMeshLODRenderData& LODData = SkeletalMeshRenderData.LODRenderData[LODIndexRead];
 
 		{
@@ -417,11 +355,11 @@ void GatherAndBakeAllAnimVertData(
 {
 	bool bCachedCPUSkinning = false;
 	constexpr bool bRecreateRenderStateImmediately = true;
-	// 1º switch to CPU skinning
+	// 1ï¿½ switch to CPU skinning
 	{
 		const int32 InLODIndex = 0;
 		{
-			if (USkinnedMeshComponent* MasterPoseComponentPtr = PreviewComponent->MasterPoseComponent.Get())
+			if (USkinnedMeshComponent* MasterPoseComponentPtr = PreviewComponent->LeaderPoseComponent.Get())
 			{
 				MasterPoseComponentPtr->SetForcedLOD(InLODIndex + 1);
 				MasterPoseComponentPtr->UpdateLODStatus();
@@ -444,7 +382,7 @@ void GatherAndBakeAllAnimVertData(
 		}
 	}
 
-	// 2º Make Sure it in ref pose
+	// 2ï¿½ Make Sure it in ref pose
 	PreviewComponent->EnablePreview(true, NULL);
 	PreviewComponent->RefreshBoneTransforms(nullptr);
 	PreviewComponent->ClearMotionVector();
@@ -484,7 +422,7 @@ void GatherAndBakeAllAnimVertData(
 	const auto& ActiveBoneIndices = LODData.ActiveBoneIndices;
 	TArray <FMatrix44f> RefToLocal;
 
-	// 3º Store Values
+	// 3ï¿½ Store Values
 	// Vert Anim
 	if (Profile->Anims_Vert.Num())
 	{
@@ -542,8 +480,9 @@ void GatherAndBakeAllAnimVertData(
 	// Bone Anim
 	if (Profile->Anims_Bone.Num())
 	{
-		const auto& RefSkeleton = PreviewComponent->SkeletalMesh->GetRefSkeleton();
-		const auto& GlobalRefSkeleton = PreviewComponent->SkeletalMesh->GetSkeleton()->GetReferenceSkeleton();
+		const auto SkinnedAsset = PreviewComponent->GetSkinnedAsset();
+		const auto& RefSkeleton = SkinnedAsset->GetRefSkeleton();
+		const auto& GlobalRefSkeleton = SkinnedAsset->GetSkeleton()->GetReferenceSkeleton();
 		// Ref Pose in Row 0
 		{
 			PreviewComponent->EnablePreview(true, NULL);
@@ -611,7 +550,7 @@ void GatherAndBakeAllAnimVertData(
 		}
 	}
 
-	// 4º Put Mesh back into ref pose
+	// 4ï¿½ Put Mesh back into ref pose
 	{
 		PreviewComponent->EnablePreview(true, NULL);
 		PreviewComponent->RefreshBoneTransforms(nullptr);
@@ -895,7 +834,7 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 		{
 			FString AssetName = Profile->GetOutermost()->GetName();
 			//FString Name = Profile->GetName();
-			FString Name = PreviewComponent->SkeletalMesh->GetName();
+			FString Name = PreviewComponent->GetSkinnedAsset()->GetName();
 			//FString AssetName = PreviewComponent->SkeletalMesh->GetOutermost()->GetName();
 			const FString SanitizedBasePackageName = UPackageTools::SanitizePackageName(AssetName);
 			const FString PackagePath = FPackageName::GetLongPackagePath(SanitizedBasePackageName) + TEXT("/") + Name + TEXT("_VAT");

@@ -5,7 +5,7 @@
 #include "IAnimationEditor.h"
 
 #include "VertexAnimProfile.h"
-
+#include "Engine/SkinnedAssetCommon.h"
 #include "Misc/MessageDialog.h"
 #include "Modules/ModuleManager.h"
 #include "Misc/PackageName.h"
@@ -82,69 +82,24 @@
 
 #include "Developer/AssetTools/Public/IAssetTools.h"
 #include "Developer/AssetTools/Public/AssetToolsModule.h"
-
-#include "Toolkits/ToolkitManager.h"
 #include "Dialogs/DlgPickAssetPath.h"
-#include "AssetRegistryModule.h"
-
-#include "VertexAnimProfile.h"
-
-
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
-
-#include "Engine.h"
-
-#include "Misc/FeedbackContext.h"
 #include "Misc/MessageDialog.h"
-
-#include "IPersonaPreviewScene.h"
-#include "AssetViewerSettings.h"
 #include "RenderingThread.h"
-
-#include "Components/PoseableMeshComponent.h"
-
-#include "AnimationRuntime.h"
-
-//--------------------------------------
-#include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
-
-#include "VertexAnimUtils.h"
-
 #include "Animation/AnimSequence.h"
-
-#include "Kismet/KismetRenderingLibrary.h"
-
-#include "PackageTools.h"
-
 #include "Animation/AnimSequence.h"
-
-#include "Rendering/SkinWeightVertexBuffer.h"
-
-
 #include "Misc/App.h"
 #include "RenderingThread.h"
-#include "GameFramework/PlayerController.h"
-#include "ContentStreaming.h"
 #include "DrawDebugHelpers.h"
 #include "UnrealEngine.h"
-#include "SkeletalRenderPublic.h"
-
-#include "Animation/AnimStats.h"
-#include "Engine/SkeletalMeshSocket.h"
-#include "PhysicsEngine/PhysicsAsset.h"
 #include "EngineGlobals.h"
 #include "PrimitiveSceneProxy.h"
 #include "Engine/CollisionProfile.h"
-#include "Rendering/SkinWeightVertexBuffer.h"
-#include "SkeletalMeshTypes.h"
 #include "Animation/MorphTarget.h"
-#include "AnimationRuntime.h"
-
-#include "Animation/AnimSingleNodeInstance.h"
-
 
 #define LOCTEXT_NAMESPACE "PickAssetDialog"
 
@@ -324,7 +279,7 @@ static void SkinnedMeshToRawMeshes(USkinnedMeshComponent* InSkinnedMeshComponent
 		FRawMeshTracker& RawMeshTracker = OutRawMeshTrackers[OverallLODIndex];
 		const int32 BaseVertexIndex = RawMesh.VertexPositions.Num();
 
-		FSkeletalMeshLODInfo& SrcLODInfo = *(InSkinnedMeshComponent->SkeletalMesh->GetLODInfo(LODIndexRead));
+		FSkeletalMeshLODInfo& SrcLODInfo = *(InSkinnedMeshComponent->GetSkinnedAsset()->GetLODInfo(LODIndexRead));
 
 		// Get the CPU skinned verts for this LOD
 		TArray<FFinalSkinVertex> FinalVertices;
@@ -395,7 +350,7 @@ static void SkinnedMeshToRawMeshes(USkinnedMeshComponent* InSkinnedMeshComponent
 				// use the remapping of material indices if there is a valid value
 				if (SrcLODInfo.LODMaterialMap.IsValidIndex(SectionIndex) && SrcLODInfo.LODMaterialMap[SectionIndex] != INDEX_NONE)
 				{
-					MaterialIndex = FMath::Clamp<int32>(SrcLODInfo.LODMaterialMap[SectionIndex], 0, InSkinnedMeshComponent->SkeletalMesh->GetMaterials().Num());
+					MaterialIndex = FMath::Clamp<int32>(SrcLODInfo.LODMaterialMap[SectionIndex], 0, InSkinnedMeshComponent->GetSkinnedAsset()->GetMaterials().Num());
 				}
 
 				// copy face info
@@ -796,7 +751,7 @@ void SPickAssetDialog::Construct(const FArguments& InArgs)
 		// Vertex Anim Profile
 		{
 			FAssetPickerConfig AssetPickerConfig;
-			AssetPickerConfig.Filter.ClassNames.Add(UVertexAnimProfile::StaticClass()->GetFName());
+			AssetPickerConfig.Filter.ClassPaths.Add(UVertexAnimProfile::StaticClass()->GetClassPathName());
 			AssetPickerConfig.SelectionMode = ESelectionMode::Single;
 
 			AssetPickerConfig.GetCurrentSelectionDelegates.Add(&GetCurrentSelectionDelegate_Profile);
@@ -974,7 +929,7 @@ void SPickAssetDialog::Construct(const FArguments& InArgs)
 	.HAlign(HAlign_Fill)
 	[
 		SNew(SBorder)
-		.BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
+		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
 	[
 		SNew(SVerticalBox)
 		+ SVerticalBox::Slot()
@@ -1032,15 +987,15 @@ void SPickAssetDialog::Construct(const FArguments& InArgs)
     .VAlign(VAlign_Bottom)
     [
 	SNew(SUniformGridPanel)
-	.SlotPadding(FEditorStyle::GetMargin("StandardDialog.SlotPadding"))
-	.MinDesiredSlotWidth(FEditorStyle::GetFloat("StandardDialog.MinDesiredSlotWidth"))
-	.MinDesiredSlotHeight(FEditorStyle::GetFloat("StandardDialog.MinDesiredSlotHeight"))
+	.SlotPadding(FAppStyle::GetMargin("StandardDialog.SlotPadding"))
+	.MinDesiredSlotWidth(FAppStyle::GetFloat("StandardDialog.MinDesiredSlotWidth"))
+	.MinDesiredSlotHeight(FAppStyle::GetFloat("StandardDialog.MinDesiredSlotHeight"))
 	+ SUniformGridPanel::Slot(0, 0)
 	[
 		SNew(SButton)
 		.Text(LOCTEXT("OK", "OK"))
 	.HAlign(HAlign_Center)
-	.ContentPadding(FEditorStyle::GetMargin("StandardDialog.ContentPadding"))
+	.ContentPadding(FAppStyle::GetMargin("StandardDialog.ContentPadding"))
 	.OnClicked(this, &SPickAssetDialog::OnButtonClick, EAppReturnType::Ok)
 	]
     + SUniformGridPanel::Slot(1, 0)
@@ -1048,7 +1003,7 @@ void SPickAssetDialog::Construct(const FArguments& InArgs)
 	SNew(SButton)
 	.Text(LOCTEXT("Cancel", "Cancel"))
 	.HAlign(HAlign_Center)
-	.ContentPadding(FEditorStyle::GetMargin("StandardDialog.ContentPadding"))
+	.ContentPadding(FAppStyle::GetMargin("StandardDialog.ContentPadding"))
 	.OnClicked(this, &SPickAssetDialog::OnButtonClick, EAppReturnType::Cancel)
     ]
     ]
