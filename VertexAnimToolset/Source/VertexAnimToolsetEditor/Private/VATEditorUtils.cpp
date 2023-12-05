@@ -42,6 +42,9 @@
 #include "Animation/MorphTarget.h"
 #include "Animation/AnimSingleNodeInstance.h"
 
+#include "MeshDescription.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+
 #define LOCTEXT_NAMESPACE "VATEditorUtils"
 
 
@@ -355,11 +358,11 @@ void GatherAndBakeAllAnimVertData(
 {
 	bool bCachedCPUSkinning = false;
 	constexpr bool bRecreateRenderStateImmediately = true;
-	// 1� switch to CPU skinning
+	// 1º switch to CPU skinning
 	{
 		const int32 InLODIndex = 0;
 		{
-			if (USkinnedMeshComponent* MasterPoseComponentPtr = PreviewComponent->LeaderPoseComponent.Get())
+			if (USkinnedMeshComponent* MasterPoseComponentPtr = PreviewComponent->MasterPoseComponent.Get())
 			{
 				MasterPoseComponentPtr->SetForcedLOD(InLODIndex + 1);
 				MasterPoseComponentPtr->UpdateLODStatus();
@@ -382,7 +385,7 @@ void GatherAndBakeAllAnimVertData(
 		}
 	}
 
-	// 2� Make Sure it in ref pose
+	// 2º Make Sure it in ref pose
 	PreviewComponent->EnablePreview(true, NULL);
 	PreviewComponent->RefreshBoneTransforms(nullptr);
 	PreviewComponent->ClearMotionVector();
@@ -422,7 +425,7 @@ void GatherAndBakeAllAnimVertData(
 	const auto& ActiveBoneIndices = LODData.ActiveBoneIndices;
 	TArray <FMatrix44f> RefToLocal;
 
-	// 3� Store Values
+	// 3º Store Values
 	// Vert Anim
 	if (Profile->Anims_Vert.Num())
 	{
@@ -550,7 +553,7 @@ void GatherAndBakeAllAnimVertData(
 		}
 	}
 
-	// 4� Put Mesh back into ref pose
+	// 4º Put Mesh back into ref pose
 	{
 		PreviewComponent->EnablePreview(true, NULL);
 		PreviewComponent->RefreshBoneTransforms(nullptr);
