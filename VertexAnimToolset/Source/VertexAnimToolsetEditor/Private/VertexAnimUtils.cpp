@@ -85,7 +85,6 @@
 
 #include "Toolkits/ToolkitManager.h"
 #include "Dialogs/DlgPickAssetPath.h"
-#include "AssetRegistryModule.h"
 
 #include "VertexAnimProfile.h"
 
@@ -144,6 +143,8 @@
 #include "AnimationRuntime.h"
 
 #include "Animation/AnimSingleNodeInstance.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Engine/SkinnedAssetCommon.h"
 
 
 #define LOCTEXT_NAMESPACE "PickAssetDialog"

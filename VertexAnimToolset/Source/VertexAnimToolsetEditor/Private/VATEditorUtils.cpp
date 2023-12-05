@@ -40,7 +40,6 @@
 #include "Toolkits/ToolkitManager.h"
 
 #include "Dialogs/DlgPickAssetPath.h"
-#include "AssetRegistryModule.h"
 
 #include "VertexAnimProfile.h"
 
@@ -103,6 +102,7 @@
 #include "Animation/AnimSingleNodeInstance.h"
 
 #include "MeshDescription.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 
 #define LOCTEXT_NAMESPACE "VATEditorUtils"
 
