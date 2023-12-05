@@ -891,9 +891,17 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 				                                      Data,
 				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
+				FProperty* PreEditProp = nullptr;
+#define PRE_EDIT(x, y) PreEditProp = FindFieldChecked<FProperty>(Profile->x->GetClass(), FName(y)); \
+						Profile->x->PreEditChange(PreEditProp);
+
+				PRE_EDIT(NormalsTexture, "Filter")
 				Profile->NormalsTexture->Filter = TextureFilter::TF_Nearest;
+				PRE_EDIT(NormalsTexture, "NeverStream")
 				Profile->NormalsTexture->NeverStream = true;
+				PRE_EDIT(NormalsTexture, "CompressionSettings")
 				Profile->NormalsTexture->CompressionSettings = TextureCompressionSettings::TC_VectorDisplacementmap;
+				PRE_EDIT(NormalsTexture, "SRGB")
 				Profile->NormalsTexture->SRGB = false;
 				Profile->NormalsTexture->Modify();
 				Profile->NormalsTexture->MarkPackageDirty();
@@ -911,9 +919,14 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 				                                      Data,
 				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
+				FProperty* PreEditProp = nullptr;
+				PRE_EDIT(OffsetsTexture, "Filter");
 				Profile->OffsetsTexture->Filter = TextureFilter::TF_Nearest;
+				PRE_EDIT(OffsetsTexture, "NeverStream");
 				Profile->OffsetsTexture->NeverStream = true;
+				PRE_EDIT(OffsetsTexture, "CompressionSettings");
 				Profile->OffsetsTexture->CompressionSettings = TextureCompressionSettings::TC_HDR;
+				PRE_EDIT(OffsetsTexture, "SRGB");
 				Profile->OffsetsTexture->SRGB = false;
 				Profile->OffsetsTexture->Modify();
 				Profile->OffsetsTexture->MarkPackageDirty();
@@ -938,10 +951,14 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 				                                      TextureWidth_Bone, TextureHeight_Bone, 
 				                                      Data,
 				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
-
+				FProperty* PreEditProp = nullptr;
+				PRE_EDIT(BoneRotTexture, "Filter");
 				Profile->BoneRotTexture->Filter = TextureFilter::TF_Nearest;
+				PRE_EDIT(BoneRotTexture, "NeverStream");
 				Profile->BoneRotTexture->NeverStream = true;
+				PRE_EDIT(BoneRotTexture, "CompressionSettings");
 				Profile->BoneRotTexture->CompressionSettings = TextureCompressionSettings::TC_HDR;
+				PRE_EDIT(BoneRotTexture, "SRGB");
 				Profile->BoneRotTexture->SRGB = false;
 				Profile->BoneRotTexture->Modify();
 				Profile->BoneRotTexture->MarkPackageDirty();
@@ -958,11 +975,16 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 				                                      Data,//BonePos,
 				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
+				FProperty* PreEditProp = nullptr;
+				PRE_EDIT(BonePosTexture, "Filter");
 				Profile->BonePosTexture->Filter = TextureFilter::TF_Nearest;
+				PRE_EDIT(BonePosTexture, "NeverStream");
 				Profile->BonePosTexture->NeverStream = true;
+				PRE_EDIT(BonePosTexture, "CompressionSettings");
 				Profile->BonePosTexture->CompressionSettings = TextureCompressionSettings::TC_HDR;
+				PRE_EDIT(BonePosTexture, "SRGB");
 				Profile->BonePosTexture->SRGB = false;
-
+#undef PRE_EDIT
 				Profile->BonePosTexture->Modify();
 				Profile->BonePosTexture->MarkPackageDirty();
 				Profile->BonePosTexture->PostEditChange();
