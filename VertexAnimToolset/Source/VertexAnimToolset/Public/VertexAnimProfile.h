@@ -16,7 +16,7 @@ struct VERTEXANIMTOOLSET_API FVASequenceData
 	GENERATED_BODY()
 public:
 	UPROPERTY(EditAnywhere, Category = BakeSequence)
-		UAnimationAsset* SequenceRef = NULL;
+		UAnimSequence* SequenceRef = NULL;
 	
 	UPROPERTY(EditAnywhere, Category = BakeSequence)
 		int32 NumFrames = 8;
