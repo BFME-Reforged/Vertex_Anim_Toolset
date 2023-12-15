@@ -60,6 +60,7 @@ public class VertexAnimToolsetEditor : ModuleRules
                 "AnimationBlueprintEditor",
                 "AnimationEditor",
                 "SkeletalMeshEditor",
+				"StaticMeshDescription",
 				"MeshUtilities",
 				// ... add private dependencies that you statically link with here ...	
 			}

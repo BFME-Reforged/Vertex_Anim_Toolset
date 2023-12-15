@@ -67,8 +67,6 @@
 
 #include "Animation/AnimSequence.h"
 
-//#include "Runtime/Engine/Classes/Kismet/KismetRenderingLibrary.h"
-
 #include "Kismet/KismetRenderingLibrary.h"
 
 #include "PackageTools.h"
@@ -76,8 +74,6 @@
 #include "VATEditorUtils.h"
 
 #define LOCTEXT_NAMESPACE "FVertexAnimToolsetEditorModule"
-
-//#define YESSCENETICK
 
 void FVertexAnimToolsetEditorModule::StartupModule()
 {

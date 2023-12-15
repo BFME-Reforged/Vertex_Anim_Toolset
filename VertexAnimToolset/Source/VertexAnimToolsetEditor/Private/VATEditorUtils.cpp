@@ -41,6 +41,11 @@
 #include "Engine/CollisionProfile.h"
 #include "Animation/MorphTarget.h"
 #include "Animation/AnimSingleNodeInstance.h"
+#include "RawMesh.h"
+#include "MeshDescription.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include <StaticMeshAttributes.h>
+#include <MeshUtilities.h>
 
 #define LOCTEXT_NAMESPACE "VATEditorUtils"
 
@@ -346,7 +351,7 @@ static void QuatSave(FQuat& Q)
 
 void GatherAndBakeAllAnimVertData(
 	UVertexAnimProfile* Profile,
-	UDebugSkelMeshComponent* PreviewComponent,
+	USkeletalMeshComponent* PreviewComponent,
 	const TArray <int32>& UniqueSourceIDs,
 	TArray <FVector4>& OutGridVertPos, 
 	TArray <FVector4>& OutGridVertNormal,
@@ -355,7 +360,7 @@ void GatherAndBakeAllAnimVertData(
 {
 	bool bCachedCPUSkinning = false;
 	constexpr bool bRecreateRenderStateImmediately = true;
-	// 1� switch to CPU skinning
+	// 1º switch to CPU skinning
 	{
 		const int32 InLODIndex = 0;
 		{
@@ -371,10 +376,7 @@ void GatherAndBakeAllAnimVertData(
 				PreviewComponent->UpdateLODStatus();
 				PreviewComponent->RefreshBoneTransforms(nullptr);
 			}
-
-			// switch to CPU skinning
 			bCachedCPUSkinning = PreviewComponent->GetCPUSkinningEnabled();
-
 			PreviewComponent->SetCPUSkinningEnabled(true, bRecreateRenderStateImmediately);
 
 			check(PreviewComponent->MeshObject);
@@ -382,8 +384,8 @@ void GatherAndBakeAllAnimVertData(
 		}
 	}
 
-	// 2� Make Sure it in ref pose
-	PreviewComponent->EnablePreview(true, NULL);
+	// 2º Make Sure it in ref pose
+	PreviewComponent->SetUpdateAnimationInEditor(true);
 	PreviewComponent->RefreshBoneTransforms(nullptr);
 	PreviewComponent->ClearMotionVector();
 	FlushRenderingCommands();
@@ -421,58 +423,73 @@ void GatherAndBakeAllAnimVertData(
 	FSkeletalMeshLODRenderData& LODData = SkeletalMeshRenderData.LODRenderData[0];
 	const auto& ActiveBoneIndices = LODData.ActiveBoneIndices;
 	TArray <FMatrix44f> RefToLocal;
-
-	// 3� Store Values
-	// Vert Anim
+	
+	// 3º Store Values
+	// Vertex Animation
 	if (Profile->Anims_Vert.Num())
 	{
+	
 		for (int32 i = 0; i < Profile->Anims_Vert.Num(); i++)
 		{
-			PreviewComponent->EnablePreview(true, Profile->Anims_Vert[i].SequenceRef);
-			UAnimSingleNodeInstance* SingleNodeInstance = PreviewComponent->GetSingleNodeInstance();
+			FVASequenceData& VertexAnimation = Profile->Anims_Vert[i];
+			UAnimSequence* AnimSequence = VertexAnimation.SequenceRef;
+			PreviewComponent->SetAnimation(AnimSequence);			
 
-			const float Length = SingleNodeInstance->GetLength();
-			const float Step_Vert = Length / Profile->Anims_Vert[i].NumFrames;
+			const int32 AnimStartFrame = 0;
+			const int32 AnimNumFrames = VertexAnimation.NumFrames;
+			const int32 AnimEndFrame = AnimNumFrames;
+			const float AnimStartTime = AnimSequence->GetTimeAtFrame(AnimStartFrame);
 
-			Profile->Anims_Vert[i].Speed_Generated = 1.f / Length;
-			Profile->Anims_Vert[i].AnimStart_Generated = Profile->CalcStartHeightOfAnim_Vert(i);
+			int32 SampleIndex = 0;
+			const float SampleInterval = 1.f / 30.f;
+			VertexAnimation.Speed_Generated = 1.f / (AnimNumFrames * SampleInterval);
+			VertexAnimation.AnimStart_Generated = Profile->CalcStartHeightOfAnim_Vert(i);
+			FFormatNamedArguments Args;
+			Args.Add(TEXT("AnimSequenceIndex"), i + 1);
+			Args.Add(TEXT("NumAnimSequences"), Profile->Anims_Vert.Num());
+			Args.Add(TEXT("AnimSequence"), FText::FromString(*AnimSequence->GetFName().ToString()));
+			FScopedSlowTask AnimProgBar(AnimNumFrames, FText::Format(LOCTEXT("Processing", "Processing AnimSequence: {AnimSequence} [{AnimSequenceIndex}/{NumAnimSequences}]"), Args), true);
+			AnimProgBar.MakeDialog(false, false);
 
-			{
+			while (SampleIndex < AnimNumFrames) {
+				AnimProgBar.EnterProgressFrame();
 
-				for (int32 j = 0; j < Profile->Anims_Vert[i].NumFrames; j++)
+				const float Time = AnimStartTime + ((float)SampleIndex * SampleInterval);
+				SampleIndex++;
+				PreviewComponent->SetPosition(Time);
+				PreviewComponent->TickAnimation(0.0f, false);
+				PreviewComponent->RecreateClothingActors();
+				PreviewComponent->RefreshBoneTransforms(nullptr);
+				PreviewComponent->RecreateRenderState_Concurrent();
+				FlushRenderingCommands();
+				TArray<FVector3f> VertexFrameDeltas;
+				TArray<FVector3f> VertexFrameNormals;
+
+
+				TArray <FFinalSkinVertex> FinalVerts;
+				FinalVerts = static_cast<FSkeletalMeshObjectCPUSkin*>(PreviewComponent->MeshObject)->GetCachedFinalVertices();
+
+				for (int32 k = 0; k < UniqueSourceIDs.Num(); k++)
 				{
-					const float AnimTime = Step_Vert * j;
+					const int32 IndexInZeroed = k;
+					const int32 VertID = UniqueSourceIDs[k];
+					const FVector3f Delta = FinalVerts[VertID].Position - RefPoseFinalVerts[VertID].Position;
+					MaxValueOffset = FMath::Max(Delta.GetAbsMax(), MaxValueOffset);
+					ZeroedPos[IndexInZeroed] = FVector4(Delta);
 
-					PreviewComponent->SetPosition(AnimTime, false);
-					PreviewComponent->RefreshBoneTransforms(nullptr);
-					PreviewComponent->RecreateClothingActors();
-					// Cloth Ticking
-					for (int32 P = 0; P < 8; P++) PreviewComponent->GetWorld()->Tick(ELevelTick::LEVELTICK_All, Step_Vert);
+					const FVector3f DeltaNormal = FinalVerts[VertID].TangentZ.ToFVector3f() - RefPoseFinalVerts[VertID].TangentZ.ToFVector3f();
+					ZeroedNorm[IndexInZeroed] = FVector4(DeltaNormal);
 
-					PreviewComponent->ClearMotionVector();
-
-					FlushRenderingCommands();
-
-					TArray <FFinalSkinVertex> FinalVerts;
-					FinalVerts = static_cast<FSkeletalMeshObjectCPUSkin*>(PreviewComponent->MeshObject)->GetCachedFinalVertices();
-
-					for (int32 k = 0; k < UniqueSourceIDs.Num(); k++)
-					{
-						const int32 IndexInZeroed = k;
-						const int32 VertID = UniqueSourceIDs[k];
-						const FVector3f Delta = FinalVerts[VertID].Position - RefPoseFinalVerts[VertID].Position;
-						MaxValueOffset = FMath::Max(Delta.GetAbsMax(), MaxValueOffset);
-						ZeroedPos[IndexInZeroed] = FVector4(Delta);
-
-						const FVector3f DeltaNormal = FinalVerts[VertID].TangentZ.ToFVector3f() - RefPoseFinalVerts[VertID].TangentZ.ToFVector3f();
-						ZeroedNorm[IndexInZeroed] = FVector4(DeltaNormal);
-						
-					}
-
-					GridVertPos.Append(ZeroedPos);
-					GridVertNormal.Append(ZeroedNorm);
 				}
+
+				GridVertPos.Append(ZeroedPos);
+				GridVertNormal.Append(ZeroedNorm);
+
+				
+
 			}
+
+			
 		}
 	}
 
@@ -485,7 +502,6 @@ void GatherAndBakeAllAnimVertData(
 		const auto& GlobalRefSkeleton = SkinnedAsset->GetSkeleton()->GetReferenceSkeleton();
 		// Ref Pose in Row 0
 		{
-			PreviewComponent->EnablePreview(true, NULL);
 			PreviewComponent->RefreshBoneTransforms(nullptr);
 			PreviewComponent->ClearMotionVector();
 			FlushRenderingCommands();
@@ -507,7 +523,6 @@ void GatherAndBakeAllAnimVertData(
 
 		for (int32 i = 0; i < Profile->Anims_Bone.Num(); i++)
 		{
-			PreviewComponent->EnablePreview(true, Profile->Anims_Bone[i].SequenceRef);
 			UAnimSingleNodeInstance* SingleNodeInstance = PreviewComponent->GetSingleNodeInstance();
 
 			const float Length = SingleNodeInstance->GetLength();
@@ -550,9 +565,8 @@ void GatherAndBakeAllAnimVertData(
 		}
 	}
 
-	// 4� Put Mesh back into ref pose
+	// 4º Put Mesh back into ref pose
 	{
-		PreviewComponent->EnablePreview(true, NULL);
 		PreviewComponent->RefreshBoneTransforms(nullptr);
 
 		PreviewComponent->ClearMotionVector();
@@ -785,7 +799,7 @@ int FVATEditorUtils::UnPackBits(const float N)
 	return float(result);
 }
 
-void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* PreviewComponent, UVertexAnimProfile* Profile,
+void FVATEditorUtils::DoBakeProcess_Programmatic(USkeletalMeshComponent* PreviewComponent, UVertexAnimProfile* Profile,
                                                  FString PackageName, bool bOnlyCreateStaticMesh, bool DoAnimBake,
                                                  bool DoStaticMesh)
 {
@@ -826,6 +840,7 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 
 	if (DoStaticMesh)
 	{
+		
 		if (Profile->StaticMesh && (!bOnlyCreateStaticMesh))
 		{
 			PackageName = Profile->StaticMesh->GetOutermost()->GetName();
@@ -841,8 +856,10 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 			PackageName = PackagePath;
 		}
 
-		UStaticMesh* StaticMesh = FVertexAnimUtils::ConvertMeshesToStaticMesh( { PreviewComponent }, FTransform::Identity, PackageName);
-
+		//UStaticMesh* StaticMesh = FVertexAnimUtils::ConvertMeshesToStaticMesh( { PreviewComponent }, FTransform::Identity, PackageName);
+		USkeletalMesh* SkelMesh = PreviewComponent->GetSkeletalMeshAsset();
+		check(SkelMesh);
+		UStaticMesh* StaticMesh = ConvertSkeletalMeshToStaticMesh(SkelMesh, PackageName, 0);
 		if (Profile->UVChannel_VertAnim != -1) FVertexAnimUtils::VATUVsToStaticMeshLODs(StaticMesh, Profile->UVChannel_VertAnim, UVs_VertAnim);
 		if (Profile->UVChannel_BoneAnim != -1) FVertexAnimUtils::VATUVsToStaticMeshLODs(StaticMesh, Profile->UVChannel_BoneAnim, UVs_BoneAnim1);
 		if (Profile->UVChannel_BoneAnim_Full != -1)
@@ -855,8 +872,6 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 		Profile->MarkPackageDirty();
 	}
 
-	
-
 	if (DoAnimBake)
 	{
 		int32 TextureWidth_Vert = Profile->OverrideSize_Vert.X;
@@ -866,7 +881,15 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 
 		
 		TArray <FVector4> VertPos, VertNormal, BonePos, BoneRot;
-		GatherAndBakeAllAnimVertData(Profile, PreviewComponent, UniqueSourceIDs, VertPos, VertNormal, BonePos, BoneRot);
+		GatherAndBakeAllAnimVertData(
+			Profile, 
+			PreviewComponent, 
+			UniqueSourceIDs, 
+			VertPos, 
+			VertNormal, 
+			BonePos, 
+			BoneRot
+		);
 
 		FString AssetName = Profile->GetOutermost()->GetName();
 		const FString SanitizedBasePackageName = UPackageTools::SanitizePackageName(AssetName);
@@ -877,10 +900,12 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 		{
 			TArray <FFloat16Color> Data;
 			Data.SetNumZeroed(TextureWidth_Vert * TextureHeight_Vert);
-
+			
 
 			{
 				EncodeData_Vec(VertNormal, 2.f, false, Data); // decided on fixed 2.0 for simplicity
+
+				
 
 				Profile->NormalsTexture = SetTexture2(PreviewComponent->GetWorld(), PackagePath,
 				                                      Profile->GetName() + "_Normals", Profile->NormalsTexture,
@@ -888,9 +913,17 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 				                                      Data,
 				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
+				FProperty* PreEditProp = nullptr;
+#define PRE_EDIT(x, y) PreEditProp = FindFieldChecked<FProperty>(Profile->x->GetClass(), FName(y)); \
+						Profile->x->PreEditChange(PreEditProp);
+
+				PRE_EDIT(NormalsTexture, "Filter")
 				Profile->NormalsTexture->Filter = TextureFilter::TF_Nearest;
+				PRE_EDIT(NormalsTexture, "NeverStream")
 				Profile->NormalsTexture->NeverStream = true;
+				PRE_EDIT(NormalsTexture, "CompressionSettings")
 				Profile->NormalsTexture->CompressionSettings = TextureCompressionSettings::TC_VectorDisplacementmap;
+				PRE_EDIT(NormalsTexture, "SRGB")
 				Profile->NormalsTexture->SRGB = false;
 				Profile->NormalsTexture->Modify();
 				Profile->NormalsTexture->MarkPackageDirty();
@@ -908,9 +941,14 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 				                                      Data,
 				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
+				FProperty* PreEditProp = nullptr;
+				PRE_EDIT(OffsetsTexture, "Filter");
 				Profile->OffsetsTexture->Filter = TextureFilter::TF_Nearest;
+				PRE_EDIT(OffsetsTexture, "NeverStream");
 				Profile->OffsetsTexture->NeverStream = true;
+				PRE_EDIT(OffsetsTexture, "CompressionSettings");
 				Profile->OffsetsTexture->CompressionSettings = TextureCompressionSettings::TC_HDR;
+				PRE_EDIT(OffsetsTexture, "SRGB");
 				Profile->OffsetsTexture->SRGB = false;
 				Profile->OffsetsTexture->Modify();
 				Profile->OffsetsTexture->MarkPackageDirty();
@@ -935,10 +973,14 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 				                                      TextureWidth_Bone, TextureHeight_Bone, 
 				                                      Data,
 				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
-
+				FProperty* PreEditProp = nullptr;
+				PRE_EDIT(BoneRotTexture, "Filter");
 				Profile->BoneRotTexture->Filter = TextureFilter::TF_Nearest;
+				PRE_EDIT(BoneRotTexture, "NeverStream");
 				Profile->BoneRotTexture->NeverStream = true;
+				PRE_EDIT(BoneRotTexture, "CompressionSettings");
 				Profile->BoneRotTexture->CompressionSettings = TextureCompressionSettings::TC_HDR;
+				PRE_EDIT(BoneRotTexture, "SRGB");
 				Profile->BoneRotTexture->SRGB = false;
 				Profile->BoneRotTexture->Modify();
 				Profile->BoneRotTexture->MarkPackageDirty();
@@ -947,6 +989,7 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 			}
 
 			{
+				
 				EncodeData_Vec(BonePos, Profile->MaxValuePosition_Bone, true, Data);
 
 				Profile->BonePosTexture = SetTexture2(PreviewComponent->GetWorld(), PackagePath,
@@ -955,11 +998,16 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 				                                      Data,//BonePos,
 				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
+				FProperty* PreEditProp = nullptr;
+				PRE_EDIT(BonePosTexture, "Filter");
 				Profile->BonePosTexture->Filter = TextureFilter::TF_Nearest;
+				PRE_EDIT(BonePosTexture, "NeverStream");
 				Profile->BonePosTexture->NeverStream = true;
+				PRE_EDIT(BonePosTexture, "CompressionSettings");
 				Profile->BonePosTexture->CompressionSettings = TextureCompressionSettings::TC_HDR;
+				PRE_EDIT(BonePosTexture, "SRGB");
 				Profile->BonePosTexture->SRGB = false;
-
+#undef PRE_EDIT
 				Profile->BonePosTexture->Modify();
 				Profile->BonePosTexture->MarkPackageDirty();
 				Profile->BonePosTexture->PostEditChange();
@@ -972,7 +1020,121 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(UDebugSkelMeshComponent* Previe
 	return;
 }
 
-void FVATEditorUtils::DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent)
+UStaticMesh* FVATEditorUtils::ConvertSkeletalMeshToStaticMesh(USkeletalMesh* SkeletalMesh, const FString PackageName, const int32 LODIndex)
+{
+	check(SkeletalMesh);
+
+	if (PackageName.IsEmpty() || !FPackageName::IsValidObjectPath(PackageName))
+	{
+		return nullptr;
+	}
+
+	if (!SkeletalMesh->IsValidLODIndex(LODIndex))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Invalid LODIndex: %i"), LODIndex);
+		return nullptr;
+	}
+
+	// Create Temp Actor
+	check(GEditor);
+	UWorld* World = GEditor->GetEditorWorldContext().World();
+	check(World);
+	AActor* Actor = World->SpawnActor<AActor>();
+	check(Actor);
+
+	// Create Temp SkeletalMesh Component
+	USkeletalMeshComponent* MeshComponent = NewObject<USkeletalMeshComponent>(Actor);
+	MeshComponent->RegisterComponent();
+	MeshComponent->SetSkeletalMesh(SkeletalMesh);
+	TArray<UMeshComponent*> MeshComponents = { MeshComponent };
+
+	UStaticMesh* OutStaticMesh = nullptr;
+	bool bGeneratedCorrectly = true;
+
+	// Create New StaticMesh
+	if (!FPackageName::DoesPackageExist(PackageName))
+	{
+		IMeshUtilities& MeshUtilities = FModuleManager::Get().LoadModuleChecked<IMeshUtilities>("MeshUtilities");
+		OutStaticMesh = MeshUtilities.ConvertMeshesToStaticMesh(MeshComponents, FTransform::Identity, PackageName);
+	}
+	// Update Existing StaticMesh
+	else
+	{
+		// Load Existing Mesh
+		OutStaticMesh = LoadObject<UStaticMesh>(nullptr, *PackageName);
+	}
+
+	if (OutStaticMesh)
+	{
+		// Create Temp Package.
+		// because 
+		UPackage* TransientPackage = GetTransientPackage();
+
+		// Create Temp Mesh.
+		IMeshUtilities& MeshUtilities = FModuleManager::Get().LoadModuleChecked<IMeshUtilities>("MeshUtilities");
+		UStaticMesh* TempMesh = MeshUtilities.ConvertMeshesToStaticMesh(MeshComponents, FTransform::Identity, TransientPackage->GetPathName());
+
+		// make sure transactional flag is on
+		TempMesh->SetFlags(RF_Transactional);
+
+		// Copy All LODs
+		if (LODIndex < 0)
+		{
+			const int32 NumSourceModels = TempMesh->GetNumSourceModels();
+			OutStaticMesh->SetNumSourceModels(NumSourceModels);
+
+			for (int32 Index = 0; Index < NumSourceModels; ++Index)
+			{
+				// Get RawMesh
+				FRawMesh RawMesh;
+				TempMesh->GetSourceModel(Index).LoadRawMesh(RawMesh);
+
+				// Set RawMesh
+				OutStaticMesh->GetSourceModel(Index).SaveRawMesh(RawMesh);
+			};
+		}
+
+		// Copy Single LOD
+		else
+		{
+			if (LODIndex >= TempMesh->GetNumSourceModels())
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Invalid Source Model Index: %i"), LODIndex);
+				bGeneratedCorrectly = false;
+			}
+			else
+			{
+				OutStaticMesh->SetNumSourceModels(1);
+
+				// Get RawMesh
+				FRawMesh RawMesh;
+				TempMesh->GetSourceModel(LODIndex).LoadRawMesh(RawMesh);
+
+				// Set RawMesh
+				OutStaticMesh->GetSourceModel(0).SaveRawMesh(RawMesh);
+			}
+		}
+
+		// Copy Materials
+		const TArray<FStaticMaterial>& Materials = TempMesh->GetStaticMaterials();
+		OutStaticMesh->SetStaticMaterials(Materials);
+
+		// Done
+		TArray<FText> OutErrors;
+		OutStaticMesh->Build(true, &OutErrors);
+		OutStaticMesh->MarkPackageDirty();
+	}
+
+	// Destroy Temp Component and Actor
+	MeshComponent->UnregisterComponent();
+	MeshComponent->DestroyComponent();
+	Actor->Destroy();
+
+	return bGeneratedCorrectly ? OutStaticMesh : nullptr;
+}
+
+
+void FVATEditorUtils::DoBakeProcess(USkeletalMeshComponent* PreviewComponent)
 {
 	PreviewComponent->GlobalAnimRateScale = 0.f;
 	
@@ -1021,28 +1183,6 @@ void FVATEditorUtils::DoBakeProcess(UDebugSkelMeshComponent* PreviewComponent)
 	if ((!DoAnimBake) && (!DoStaticMesh)) return;
 
 	DoBakeProcess_Programmatic(PreviewComponent, Profile, PackageName, bOnlyCreateStaticMesh, DoAnimBake, DoStaticMesh);
-}
-
-void FVATEditorUtils::UVChannelsToSkeletalMesh(USkeletalMesh* Skel, const int32 LODIndex, const int32 UVChannelStart, TArray<TArray<FVector2D>>& UVChannels)
-{
-	check((UVChannelStart + UVChannels.Num()) <= MAX_TEXCOORDS);
-	check(UVChannelStart < (int32)Skel->GetImportedModel()->LODModels[LODIndex].NumTexCoords);
-
-	Skel->GetImportedModel()->LODModels[LODIndex].NumTexCoords = UVChannelStart + UVChannels.Num();
-
-	const int32 Num = Skel->GetImportedModel()->LODModels[LODIndex].NumVertices;
-	for (int32 j = 0; j < UVChannels.Num(); j++)
-	{
-		check(UVChannels[j].Num() == Num);
-		for (int32 i = 0; i < Num; i++)
-		{
-			int32 SectionIndex = 0;
-			int32 SoftIndex = 0;
-			Skel->GetImportedModel()->LODModels[LODIndex].GetSectionFromVertexIndex(i, SectionIndex, SoftIndex);
-
-			Skel->GetImportedModel()->LODModels[LODIndex].Sections[SectionIndex].SoftVertices[SoftIndex].UVs[UVChannelStart+j] = FVector2f(UVChannels[j][i]);
-		}
-	}
 }
 
 
@@ -1233,4 +1373,3 @@ void FVATEditorUtils::ClosestUVPivotAssign(
 
 
 #undef LOCTEXT_NAMESPACE
-

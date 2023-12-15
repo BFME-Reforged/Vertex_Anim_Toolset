@@ -12,6 +12,12 @@
 	"EngineVersion": "5.3",
 	"CanContainContent": true,
 	"Installed": false,
+	"Plugins": [
+		{
+			"Name": "AnimToTexture",
+			"Enabled":  true
+		}
+	],
 	"Modules": [
 		{
 			"Name": "VertexAnimToolset",
