@@ -718,31 +718,26 @@ static void EncodeData_Quat(const bool HD, const TArray <FVector4>& VectorData, 
 }
 
 static UTexture2D* SetTexture2(
-	UWorld* World, const FString PackagePath, const FString Name, 
-	UTexture2D* Texture, 
+	const FString PackagePath, const FString Name,
 	const int32 InSizeX, const int32 InSizeY,
-	const TArray <FFloat16Color>& Data, //const TArray <FVector>& VectorData,
+	const TArray <FFloat16Color>& Data,
 	EObjectFlags InObjectFlags)
 {
 	UTexture2D* NewTexture;
 
 	{
+		// Used to avoid crash when creating texture with the same name multiple times
+		const FGuid UniqueId = FGuid::NewGuid();
+		const auto UniqueName = Name + UniqueId.ToString();
 		
-		if (Texture != NULL)
-		{
-			NewTexture = NewObject<UTexture2D>(Texture->GetOuter(), FName(*Texture->GetName()), InObjectFlags);
-			
-		}
-		else
-		{
-			UPackage* Package = CreatePackage(*(PackagePath + Name));
-			check(Package);
-			Package->FullyLoad();
+		UPackage* Package = CreatePackage(*(PackagePath + UniqueName));
+		
+		check(Package);
+		Package->FullyLoad();
 
-			NewTexture = NewObject<UTexture2D>(Package, *Name, InObjectFlags);
+		NewTexture = NewObject<UTexture2D>(Package, *UniqueName, InObjectFlags);
 
-			FAssetRegistryModule::AssetCreated(NewTexture);
-		}
+		FAssetRegistryModule::AssetCreated(NewTexture);
 
 		checkf(NewTexture, TEXT("%s"), *Name);
 
@@ -907,11 +902,9 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(USkeletalMeshComponent* Preview
 
 				
 
-				Profile->NormalsTexture = SetTexture2(PreviewComponent->GetWorld(), PackagePath,
-				                                      Profile->GetName() + "_Normals", Profile->NormalsTexture,
+				Profile->NormalsTexture = SetTexture2(PackagePath, Profile->GetName() + "_Normals",
 				                                      TextureWidth_Vert, TextureHeight_Vert,
-				                                      Data,
-				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
+				                                      Data, Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
 				FProperty* PreEditProp = nullptr;
 #define PRE_EDIT(x, y) PreEditProp = FindFieldChecked<FProperty>(Profile->x->GetClass(), FName(y)); \
@@ -935,11 +928,9 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(USkeletalMeshComponent* Preview
 			{
 				EncodeData_Vec(VertPos, Profile->MaxValueOffset_Vert, true, Data);
 
-				Profile->OffsetsTexture = SetTexture2(PreviewComponent->GetWorld(), PackagePath,
-				                                      Profile->GetName() + "_Offsets", Profile->OffsetsTexture,
+				Profile->OffsetsTexture = SetTexture2(PackagePath, Profile->GetName() + "_Offsets",
 				                                      TextureWidth_Vert, TextureHeight_Vert,
-				                                      Data,
-				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
+				                                      Data, Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
 				FProperty* PreEditProp = nullptr;
 				PRE_EDIT(OffsetsTexture, "Filter");
@@ -968,11 +959,9 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(USkeletalMeshComponent* Preview
 			{
 				EncodeData_Quat(true, BoneRot, Data);
 
-				Profile->BoneRotTexture = SetTexture2(PreviewComponent->GetWorld(), PackagePath, 
-				                                      Profile->GetName() + "_BoneRot", Profile->BoneRotTexture,
-				                                      TextureWidth_Bone, TextureHeight_Bone, 
-				                                      Data,
-				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
+				Profile->BoneRotTexture = SetTexture2(PackagePath, Profile->GetName() + "_BoneRot", 
+				                                      TextureWidth_Bone, TextureHeight_Bone,
+				                                      Data, Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 				FProperty* PreEditProp = nullptr;
 				PRE_EDIT(BoneRotTexture, "Filter");
 				Profile->BoneRotTexture->Filter = TextureFilter::TF_Nearest;
@@ -992,11 +981,9 @@ void FVATEditorUtils::DoBakeProcess_Programmatic(USkeletalMeshComponent* Preview
 				
 				EncodeData_Vec(BonePos, Profile->MaxValuePosition_Bone, true, Data);
 
-				Profile->BonePosTexture = SetTexture2(PreviewComponent->GetWorld(), PackagePath,
-				                                      Profile->GetName() + "_BonePos", Profile->BonePosTexture,
-				                                      TextureWidth_Bone, TextureHeight_Bone, 
-				                                      Data,//BonePos,
-				                                      Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
+				Profile->BonePosTexture = SetTexture2(PackagePath, Profile->GetName() + "_BonePos",
+				                                      TextureWidth_Bone, TextureHeight_Bone,
+				                                      Data, Profile->GetMaskedFlags() | RF_Public | RF_Standalone);
 
 				FProperty* PreEditProp = nullptr;
 				PRE_EDIT(BonePosTexture, "Filter");
