@@ -437,13 +437,13 @@ void GatherAndBakeAllAnimVertData(
 
 			const int32 AnimStartFrame = 0;
 			const int32 AnimNumFrames = VertexAnimation.NumFrames;
-			const int32 AnimEndFrame = AnimNumFrames;
 			const float AnimStartTime = AnimSequence->GetTimeAtFrame(AnimStartFrame);
+			const auto Length = AnimSequence->GetPlayLength();
+			const auto SampleInterval = Length / AnimNumFrames;
 
-			int32 SampleIndex = 0;
-			const float SampleInterval = 1.f / 30.f;
-			VertexAnimation.Speed_Generated = 1.f / (AnimNumFrames * SampleInterval);
+			VertexAnimation.Speed_Generated = 1.f / Length;
 			VertexAnimation.AnimStart_Generated = Profile->CalcStartHeightOfAnim_Vert(i);
+			
 			FFormatNamedArguments Args;
 			Args.Add(TEXT("AnimSequenceIndex"), i + 1);
 			Args.Add(TEXT("NumAnimSequences"), Profile->Anims_Vert.Num());
@@ -451,11 +451,11 @@ void GatherAndBakeAllAnimVertData(
 			FScopedSlowTask AnimProgBar(AnimNumFrames, FText::Format(LOCTEXT("Processing", "Processing AnimSequence: {AnimSequence} [{AnimSequenceIndex}/{NumAnimSequences}]"), Args), true);
 			AnimProgBar.MakeDialog(false, false);
 
-			while (SampleIndex < AnimNumFrames) {
+			for (int32 j = 0; j < AnimNumFrames; j++)
+			{
 				AnimProgBar.EnterProgressFrame();
 
-				const float Time = AnimStartTime + ((float)SampleIndex * SampleInterval);
-				SampleIndex++;
+				const float Time = AnimStartTime + (j * SampleInterval);
 				PreviewComponent->SetPosition(Time);
 				PreviewComponent->TickAnimation(0.0f, false);
 				PreviewComponent->RecreateClothingActors();
