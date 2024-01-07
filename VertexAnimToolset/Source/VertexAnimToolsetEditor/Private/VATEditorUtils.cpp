@@ -484,12 +484,7 @@ void GatherAndBakeAllAnimVertData(
 
 				GridVertPos.Append(ZeroedPos);
 				GridVertNormal.Append(ZeroedNorm);
-
-				
-
 			}
-
-			
 		}
 	}
 
@@ -525,6 +520,10 @@ void GatherAndBakeAllAnimVertData(
 		{
 			UAnimSingleNodeInstance* SingleNodeInstance = PreviewComponent->GetSingleNodeInstance();
 
+			FVASequenceData& BoneAnimation = Profile->Anims_Bone[i];
+			UAnimSequence* AnimSequence = BoneAnimation.SequenceRef;
+			PreviewComponent->SetAnimation(AnimSequence);
+
 			const float Length = SingleNodeInstance->GetLength();
 			const float Step_Bone = Length / Profile->Anims_Bone[i].NumFrames;
 
@@ -535,8 +534,11 @@ void GatherAndBakeAllAnimVertData(
 			{
 				const float AnimTime = Step_Bone * j;
 
-				PreviewComponent->SetPosition(AnimTime, false);
+				PreviewComponent->SetPosition(AnimTime);
+				PreviewComponent->TickAnimation(0.0f, false);
+				PreviewComponent->RecreateClothingActors();
 				PreviewComponent->RefreshBoneTransforms(nullptr);
+				PreviewComponent->RecreateRenderState_Concurrent();
 				PreviewComponent->ClearMotionVector();
 				FlushRenderingCommands();
 
